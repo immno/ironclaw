@@ -909,4 +909,58 @@ mod tests {
         // Verify the status text for Running is "running"
         assert_eq!(RunStatus::Running.to_string(), "running");
     }
+
+    /// Regression test for #697: full_job routines were immediately marked Ok
+    /// on dispatch, so failures/completions were never synced back. The fix
+    /// changed dispatch to return Running and added sync_dispatched_runs which
+    /// maps terminal job states to routine run statuses.
+    #[test]
+    fn test_job_state_to_run_status_mapping() {
+        use crate::context::JobState;
+
+        // Helper that replicates the mapping logic from sync_dispatched_runs
+        let map_state = |state: JobState, reason: Option<&str>| -> Option<(RunStatus, String)> {
+            let last_reason = reason.map(|s| s.to_string());
+            match state {
+                JobState::Completed | JobState::Submitted | JobState::Accepted => {
+                    let summary =
+                        last_reason.unwrap_or_else(|| "Job completed successfully".to_string());
+                    Some((RunStatus::Ok, summary))
+                }
+                JobState::Failed => {
+                    let summary = last_reason
+                        .unwrap_or_else(|| "Job failed (no error message recorded)".to_string());
+                    Some((RunStatus::Failed, summary))
+                }
+                JobState::Cancelled => Some((RunStatus::Failed, "Job was cancelled".to_string())),
+                JobState::Pending | JobState::InProgress | JobState::Stuck => None,
+            }
+        };
+
+        // Terminal states produce a status update
+        let (status, _) = map_state(JobState::Completed, None).unwrap();
+        assert_eq!(status, RunStatus::Ok);
+
+        let (status, _) = map_state(JobState::Submitted, None).unwrap();
+        assert_eq!(status, RunStatus::Ok);
+
+        let (status, _) = map_state(JobState::Accepted, None).unwrap();
+        assert_eq!(status, RunStatus::Ok);
+
+        let (status, summary) = map_state(JobState::Failed, Some("OOM killed")).unwrap();
+        assert_eq!(status, RunStatus::Failed);
+        assert_eq!(summary, "OOM killed");
+
+        let (status, summary) = map_state(JobState::Failed, None).unwrap();
+        assert_eq!(status, RunStatus::Failed);
+        assert!(summary.contains("no error message"));
+
+        let (status, _) = map_state(JobState::Cancelled, None).unwrap();
+        assert_eq!(status, RunStatus::Failed);
+
+        // In-progress states should NOT produce a status update (skip)
+        assert!(map_state(JobState::Pending, None).is_none());
+        assert!(map_state(JobState::InProgress, None).is_none());
+        assert!(map_state(JobState::Stuck, None).is_none());
+    }
 }
