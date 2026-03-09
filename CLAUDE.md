@@ -647,7 +647,7 @@ Key test patterns:
 
 ## Current Limitations / TODOs
 
-1. **libSQL CLI connection crash** - `ironclaw tool setup` and `ironclaw secret set` crash with "invalid connection string" error on libSQL deployments. Blocks all interactive setup flows. Workaround: manually encrypt secrets via Python. See `src/db/mod.rs` `create_secrets_store()` doc comment. Related: #655 (libSQL backend gaps).
+1. ~~**libSQL CLI connection crash**~~ - **Fixed in commit d8dcc34.** Root cause was inline compile-time `#[cfg]` blocks in CLI subcommands always choosing postgres when both features were compiled. The fix moved backend dispatch to `db::create_secrets_store()` with explicit pattern matching. Defensively improved `connect_from_config()` and `create_secrets_store()` to use explicit `Postgres =>` patterns instead of wildcards, catching misconfiguration in postgres-only builds more clearly.
 2. **Domain-specific tools** - `marketplace.rs`, `restaurant.rs`, `taskrabbit.rs`, `ecommerce.rs` return placeholder responses; need real API integrations
 3. **Integration tests** - Need testcontainers setup for PostgreSQL
 4. **MCP stdio transport** - Only HTTP transport implemented
