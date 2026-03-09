@@ -736,12 +736,16 @@ impl Agent {
     }
 
     async fn handle_message(&self, message: &IncomingMessage) -> Result<Option<String>, Error> {
-        tracing::info!(
+        // Log at info level only for tracking without exposing PII (user_id can be a phone number)
+        tracing::info!(message_id = %message.id, "Processing message");
+
+        // Log sensitive details at debug level for troubleshooting
+        tracing::debug!(
             message_id = %message.id,
             user_id = %message.user_id,
             channel = %message.channel,
             thread_id = ?message.thread_id,
-            "Processing message from channel"
+            "Message details"
         );
 
         // Set message tool context for this turn (current channel and target)
