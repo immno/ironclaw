@@ -104,6 +104,20 @@ jobs:
       - name: Instantiation test (host linker compatibility)
         run: cargo test --all-features wit_compat -- --nocapture
 
+  bench-compile:
+    name: Benchmark Compilation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: bench
+      - name: Compile benchmarks
+        run: cargo bench --no-run
+
   docker-build:
     name: Docker Build
     if: >
