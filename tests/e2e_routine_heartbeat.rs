@@ -231,7 +231,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 3: routine_cooldown
+    // Test 3: system_event_trigger_matches_and_filters
     // -----------------------------------------------------------------------
 
     #[tokio::test]
@@ -332,6 +332,10 @@ mod tests {
             "Expected no routine for filter mismatch"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Test 4: routine_cooldown
+    // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn routine_cooldown() {

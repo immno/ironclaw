@@ -141,7 +141,9 @@ impl Trigger {
                     .and_then(|v| v.as_object())
                     .map(|m| {
                         m.iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .filter_map(|(k, v)| {
+                                json_value_as_filter_string(v).map(|s| (k.clone(), s))
+                            })
                             .collect()
                     })
                     .unwrap_or_default();
@@ -434,6 +436,19 @@ pub struct RoutineRun {
     pub tokens_used: Option<i32>,
     pub job_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Convert a JSON value to a string for filter storage.
+///
+/// Handles strings, numbers, and booleans — consistent with the matching
+/// logic in `routine_engine::json_value_as_string`.
+pub fn json_value_as_filter_string(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
 }
 
 /// Compute a content hash for event dedup.

@@ -88,8 +88,7 @@ impl Tool for RoutineCreateTool {
                 },
                 "event_filters": {
                     "type": "object",
-                    "additionalProperties": { "type": "string" },
-                    "description": "Optional exact-match filters against payload fields for system_event triggers"
+                    "description": "Optional exact-match filters against payload fields for system_event triggers. Values can be strings, numbers, or booleans."
                 },
                 "prompt": {
                     "type": "string",
@@ -208,7 +207,10 @@ impl Tool for RoutineCreateTool {
                     .and_then(|v| v.as_object())
                     .map(|obj| {
                         obj.iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k.to_string(), s.to_string())))
+                            .filter_map(|(k, v)| {
+                                crate::agent::routine::json_value_as_filter_string(v)
+                                    .map(|s| (k.to_string(), s))
+                            })
                             .collect::<std::collections::HashMap<String, String>>()
                     })
                     .unwrap_or_default();
@@ -693,96 +695,6 @@ pub struct RoutineHistoryTool {
     store: Arc<dyn Database>,
 }
 
-// ==================== event_emit ====================
-
-pub struct EventEmitTool {
-    engine: Arc<RoutineEngine>,
-}
-
-impl EventEmitTool {
-    pub fn new(engine: Arc<RoutineEngine>) -> Self {
-        Self { engine }
-    }
-}
-
-#[async_trait]
-impl Tool for EventEmitTool {
-    fn name(&self) -> &str {
-        "event_emit"
-    }
-
-    fn description(&self) -> &str {
-        "Emit a structured event to event-driven routines. \
-         Use this to trigger routines from tool workflows without waiting for cron."
-    }
-
-    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
-        ApprovalRequirement::Never
-    }
-
-    fn parameters_schema(&self) -> serde_json::Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "source": {
-                    "type": "string",
-                    "description": "Event source (e.g. 'github', 'workflow', 'tool')"
-                },
-                "event_type": {
-                    "type": "string",
-                    "description": "Event type (e.g. 'issue.opened', 'pr.ready')"
-                },
-                "payload": {
-                    "type": "object",
-                    "description": "Structured event payload"
-                },
-                "user_id": {
-                    "type": "string",
-                    "description": "Optional target user id; defaults to current user"
-                }
-            },
-            "required": ["source", "event_type"]
-        })
-    }
-
-    async fn execute(
-        &self,
-        params: serde_json::Value,
-        ctx: &JobContext,
-    ) -> Result<ToolOutput, ToolError> {
-        let start = std::time::Instant::now();
-
-        let source = require_str(&params, "source")?;
-        let event_type = require_str(&params, "event_type")?;
-        let payload = params
-            .get("payload")
-            .cloned()
-            .unwrap_or_else(|| serde_json::json!({}));
-        let user_id = params
-            .get("user_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&ctx.user_id);
-
-        let fired = self
-            .engine
-            .emit_system_event(source, event_type, &payload, Some(user_id))
-            .await;
-
-        let result = serde_json::json!({
-            "source": source,
-            "event_type": event_type,
-            "target_user_id": user_id,
-            "fired_routines": fired,
-        });
-
-        Ok(ToolOutput::success(result, start.elapsed()))
-    }
-
-    fn requires_sanitization(&self) -> bool {
-        false
-    }
-}
-
 impl RoutineHistoryTool {
     pub fn new(store: Arc<dyn Database>) -> Self {
         Self { store }
@@ -876,5 +788,89 @@ impl Tool for RoutineHistoryTool {
 
     fn requires_sanitization(&self) -> bool {
         false
+    }
+}
+
+// ==================== event_emit ====================
+
+pub struct EventEmitTool {
+    engine: Arc<RoutineEngine>,
+}
+
+impl EventEmitTool {
+    pub fn new(engine: Arc<RoutineEngine>) -> Self {
+        Self { engine }
+    }
+}
+
+#[async_trait]
+impl Tool for EventEmitTool {
+    fn name(&self) -> &str {
+        "event_emit"
+    }
+
+    fn description(&self) -> &str {
+        "Emit a structured system event to routines with a system_event trigger. \
+         Use this to trigger routines from tool workflows without waiting for cron."
+    }
+
+    fn requires_approval(&self, _params: &serde_json::Value) -> ApprovalRequirement {
+        // Emitting an event can fire system_event routines that dispatch full_jobs
+        // with pre-authorized Always-gated tools — same escalation risk as routine_fire.
+        ApprovalRequirement::UnlessAutoApproved
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "event_source": {
+                    "type": "string",
+                    "description": "Event source (e.g. 'github', 'workflow', 'tool')"
+                },
+                "event_type": {
+                    "type": "string",
+                    "description": "Event type (e.g. 'issue.opened', 'pr.ready')"
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Structured event payload"
+                }
+            },
+            "required": ["event_source", "event_type"]
+        })
+    }
+
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        ctx: &JobContext,
+    ) -> Result<ToolOutput, ToolError> {
+        let start = std::time::Instant::now();
+
+        let source = require_str(&params, "event_source")?;
+        let event_type = require_str(&params, "event_type")?;
+        let payload = params
+            .get("payload")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let fired = self
+            .engine
+            .emit_system_event(source, event_type, &payload, Some(&ctx.user_id))
+            .await;
+
+        let result = serde_json::json!({
+            "event_source": source,
+            "event_type": event_type,
+            "user_id": &ctx.user_id,
+            "fired_routines": fired,
+        });
+
+        Ok(ToolOutput::success(result, start.elapsed()))
+    }
+
+    fn requires_sanitization(&self) -> bool {
+        true
     }
 }

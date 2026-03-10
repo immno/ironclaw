@@ -192,7 +192,9 @@ impl RoutineEngine {
                 continue;
             };
 
-            if expected_source != source || expected_event != event_type {
+            if !expected_source.eq_ignore_ascii_case(source)
+                || !expected_event.eq_ignore_ascii_case(event_type)
+            {
                 continue;
             }
 
@@ -205,6 +207,7 @@ impl RoutineEngine {
             let mut matched = true;
             for (key, expected) in filters {
                 let Some(actual) = payload.get(key).and_then(json_value_as_string) else {
+                    tracing::debug!(routine = %routine.name, filter_key = %key, "Filter key not found in payload");
                     matched = false;
                     break;
                 };
