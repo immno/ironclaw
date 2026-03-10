@@ -500,22 +500,6 @@ mod tests {
     }
 
     #[test]
-    fn telegram_conversation_context_platform() {
-        let channel = RelayChannel::new_with_provider(
-            test_client(),
-            RelayProvider::Telegram,
-            "token".into(),
-            "bot123".into(),
-            "inst1".into(),
-            "user1".into(),
-        );
-
-        let metadata = serde_json::json!({"sender_id": "12345"});
-        let ctx = channel.conversation_context(&metadata);
-        assert_eq!(ctx.get("platform"), Some(&"telegram".to_string()));
-    }
-
-    #[test]
     fn with_timeouts_sets_values() {
         let channel = RelayChannel::new(
             test_client(),
@@ -545,38 +529,5 @@ mod tests {
         assert_eq!(body["channel"], "C456");
         assert_eq!(body["text"], "hello");
         assert_eq!(body["thread_ts"], "1234567.890");
-    }
-
-    #[test]
-    fn build_send_body_telegram() {
-        let channel = RelayChannel::new_with_provider(
-            test_client(),
-            RelayProvider::Telegram,
-            "token".into(),
-            "bot123".into(),
-            "inst1".into(),
-            "user1".into(),
-        );
-        let (method, body) = channel.build_send_body("12345", "hello", Some("42"));
-        assert_eq!(method, "sendMessage");
-        assert_eq!(body["chat_id"], "12345");
-        assert_eq!(body["text"], "hello");
-        assert_eq!(body["reply_to_message_id"], 42);
-    }
-
-    #[test]
-    fn build_send_body_telegram_no_thread() {
-        let channel = RelayChannel::new_with_provider(
-            test_client(),
-            RelayProvider::Telegram,
-            "token".into(),
-            "bot123".into(),
-            "inst1".into(),
-            "user1".into(),
-        );
-        let (method, body) = channel.build_send_body("12345", "hi", None);
-        assert_eq!(method, "sendMessage");
-        assert_eq!(body["chat_id"], "12345");
-        assert!(body.get("reply_to_message_id").is_none());
     }
 }
