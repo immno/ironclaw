@@ -214,10 +214,15 @@ bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime", "dep:aws-smithy-types
 name = "html_to_markdown"
 required-features = ["html-to-markdown"]
 
+[profile.release]
+strip = true          # Remove debug symbols from release binaries
+panic = "abort"       # No unwind tables, smaller + faster (lose backtraces on panic)
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"
-lto = "thin"
+lto = "fat"           # Full cross-crate LTO (slow build, better codegen)
+codegen-units = 1     # Single codegen unit for maximum optimization
 
 # Config for 'dist'
 [workspace.metadata.dist]
