@@ -2,7 +2,7 @@
 targets = []
 
 [advisories]
-unmaintained = "warn"
+unmaintained = "workspace"
 yanked = "deny"
 ignore = [
     # Add specific RUSTSEC IDs with justification comments as needed
