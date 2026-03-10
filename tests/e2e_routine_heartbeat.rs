@@ -20,9 +20,8 @@ mod tests {
     use ironclaw::agent::routine_engine::RoutineEngine;
     use ironclaw::agent::{HeartbeatConfig, HeartbeatRunner};
     use ironclaw::channels::IncomingMessage;
-    use ironclaw::config::{RoutineConfig, SafetyConfig};
+    use ironclaw::config::RoutineConfig;
     use ironclaw::db::Database;
-    use ironclaw::safety::SafetyLayer;
     use ironclaw::workspace::Workspace;
     use ironclaw::workspace::hygiene::HygieneConfig;
 
@@ -118,6 +117,7 @@ mod tests {
             "cron-test",
             Trigger::Cron {
                 schedule: "* * * * *".to_string(),
+                timezone: None,
             },
             "Check system status.",
         );
@@ -203,6 +203,7 @@ mod tests {
             thread_id: None,
             received_at: Utc::now(),
             metadata: serde_json::json!({}),
+            timezone: None,
             attachments: Vec::new(),
         };
         let fired = engine.check_event_triggers(&matching_msg).await;
@@ -224,6 +225,7 @@ mod tests {
             thread_id: None,
             received_at: Utc::now(),
             metadata: serde_json::json!({}),
+            timezone: None,
             attachments: Vec::new(),
         };
         let fired_neg = engine.check_event_triggers(&non_matching_msg).await;
@@ -331,6 +333,37 @@ mod tests {
             fired_wrong_filter, 0,
             "Expected no routine for filter mismatch"
         );
+
+        // Case-insensitive source/event_type should still match.
+        let fired_case = engine
+            .emit_system_event(
+                "GitHub",
+                "Issue.Opened",
+                &serde_json::json!({
+                    "repository": "nearai/ironclaw",
+                    "issue_number": 99
+                }),
+                Some("default"),
+            )
+            .await;
+        assert_eq!(
+            fired_case, 1,
+            "Expected case-insensitive match on source/event_type"
+        );
+
+        // Case-insensitive filter values should match.
+        let fired_filter_case = engine
+            .emit_system_event(
+                "github",
+                "issue.opened",
+                &serde_json::json!({"repository": "NearAI/IronClaw"}),
+                Some("default"),
+            )
+            .await;
+        assert_eq!(
+            fired_filter_case, 1,
+            "Expected case-insensitive match on filter values"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -391,6 +424,7 @@ mod tests {
             thread_id: None,
             received_at: Utc::now(),
             metadata: serde_json::json!({}),
+            timezone: None,
             attachments: Vec::new(),
         };
         let fired1 = engine.check_event_triggers(&msg).await;
@@ -445,10 +479,6 @@ mod tests {
             }],
         );
         let llm = Arc::new(TraceLlm::from_trace(trace));
-        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
-            max_output_length: 100_000,
-            injection_check_enabled: false,
-        }));
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
@@ -460,9 +490,8 @@ mod tests {
             state_dir: _tmp.path().to_path_buf(),
         };
 
-        let runner =
-            HeartbeatRunner::new(HeartbeatConfig::default(), hygiene_config, ws, llm, safety)
-                .with_response_channel(tx);
+        let runner = HeartbeatRunner::new(HeartbeatConfig::default(), hygiene_config, ws, llm)
+            .with_response_channel(tx);
 
         let result = runner.check_heartbeat().await;
         match result {
@@ -499,10 +528,6 @@ mod tests {
         // LLM should NOT be called, so provide a trace that would panic if called.
         let trace = LlmTrace::single_turn("test-heartbeat-skip", "skip", vec![]);
         let llm = Arc::new(TraceLlm::from_trace(trace));
-        let safety = Arc::new(SafetyLayer::new(&SafetyConfig {
-            max_output_length: 100_000,
-            injection_check_enabled: false,
-        }));
 
         let hygiene_config = HygieneConfig {
             enabled: false,
@@ -512,8 +537,7 @@ mod tests {
             state_dir: _tmp.path().to_path_buf(),
         };
 
-        let runner =
-            HeartbeatRunner::new(HeartbeatConfig::default(), hygiene_config, ws, llm, safety);
+        let runner = HeartbeatRunner::new(HeartbeatConfig::default(), hygiene_config, ws, llm);
 
         let result = runner.check_heartbeat().await;
         assert!(

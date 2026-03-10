@@ -28,8 +28,7 @@ Collect these values before creating routines:
 Before installing routines, verify:
 - Routines system enabled.
 - GitHub tool authenticated (for issue/PR/comment/status operations).
-- GitHub webhook delivery configured to `POST /webhook/tools/github`.
-- Optional webhook HMAC secret configured in secrets store as `github_webhook_secret`.
+- Events are emitted via `event_emit` tool calls (a future HTTP webhook ingestion endpoint is planned but not yet available).
 
 ## Install Procedure
 1. Open [`workflow-routines.md`](references/workflow-routines.md).
